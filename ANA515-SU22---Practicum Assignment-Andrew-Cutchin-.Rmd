@@ -1,0 +1,235 @@
+---
+title: "ANA515 SU22 Practicum Assignment"
+author: "Andrew Cutchin"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document:
+    theme:
+      bootswatch: superhero
+---
+
+```{r , include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r , include = FALSE}
+library(tidyverse)
+library(knitr)
+library(bslib)
+library(ggplot2)
+library(stringr)
+library(readxl)
+library(rio)
+```
+
+```{r , include = FALSE}
+# Don't need to run, though this does work.
+# I started out not knowing how to import an excel spreadsheet specifically.  These first two code chunks are what I tried to do to import and merge them before I discovered the "rio" package online 
+# This was to call the two separate sheets in the "Grain - Land grab deals" excel spreadsheet and to save them as two different dataframes.  Then a quick look at the data.  
+landdeals_s1 <- read_excel("F://McDaniel - Data Analytics//ANA 515//GRAIN---Land-grab-deals---Jan-2012-2.xlsx", sheet = "Sheet1")
+landdeals_s2 <- read_excel("F://McDaniel - Data Analytics//ANA 515//GRAIN---Land-grab-deals---Jan-2012-2.xlsx", sheet = "Sheet2")
+glimpse(landdeals_s1)
+glimpse(landdeals_s2)
+```
+
+```{r , include=FALSE}
+# Does not work.
+# This is what I was working on to merge the two sheets into one df.
+
+# Luckily all the variables match in spelling and format, however "Year" is saved as "dbl"(can have decimals) and "chr" (character) in the other.  I decided to make them both numeric since we aren't seeing part of the year. Then I thought maybe the rows weren't bound and that's why it wouldn't merge.  This chunk never worked completely.  It wouldn't import the observation/rows after combining the variables/columns.  
+
+# That is why I looked online for other solutions and I found "rio" and a much simpler read function for multiple excel spreadsheets, shown in the next chunk.  
+landdeals1_s1<-mutate(.data = landdeals_s1, Year = as.numeric(Year))
+landdeals1_s2<-mutate(.data = landdeals_s2, Year = as.numeric(Year))
+landdeals2_s1 = bind_rows(landdeals1_s1, .id = "Sheet 1")
+landdeals2_s2 = bind_rows(landdeals1_s2, .id = "Sheet 2")
+merged_landdeals<-merge(landdeals2_s1, landdeals2_s2)
+glimpse(merged_landdeals)
+```
+
+```{r , include = FALSE}
+# This is what was all that actually necessary to call and merge the two sheets into one df with rio package. Luckily all the variables match in spelling and format, as I'm sure it would have been as smooth otherwise. It does add a variable "_file", which indicates which sheet that row originated in(1 or 2).  
+land_deals <- import_list("F://McDaniel - Data Analytics//ANA 515//GRAIN---Land-grab-deals---Jan-2012-2.xlsx", rbind = TRUE)
+```
+
+```{r, include = FALSE}
+# I used this function to remove that additional variable that indicates the sheet that the data originated in, "_file". The new df is down to the original 10 variables from each sheet.  This isn't completely necessary to remove it and that indicator could be important at a later date, or possibly to export back to excel in multiple sheets.  
+land_deals_1<-select(land_deals, -"_file")
+```
+
+```{r , include = FALSE}
+# Column Landgrabbed clean-up.
+land_deals_1 %>% count(Landgrabbed)
+# If you look at row 111, at the "Landgrabbed" variable that indicates to country the land was bought from, it just says"---".  I looked at the summary for that row and saw that this company "Hancock", bought land in several countries.  The Hectares listed for this row is "2430", which matches the land bought from Australia in that summary information.  So I will change "Landgrabbed in row 111 from "---" to "Australia".  I also changed several others that were abbreviations, when the full name was a different class.  This changed it from 72 different countries to 66.   
+land_deals_2 <- land_deals_1 %>%
+  mutate(
+    Landgrabbed = case_when(
+      str_detect(Landgrabbed, "---") ~ "Australia",
+      str_detect(Landgrabbed, "Aus") ~ "Australia",
+      str_detect(Landgrabbed, "AUS") ~ "Australia",
+      str_detect(Landgrabbed, "Arg") ~ "Argentina",
+      str_detect(Landgrabbed, "Rus") ~ "Russia",
+      str_detect(Landgrabbed, "US") ~ "United States",
+      TRUE ~ Landgrabbed))
+land_deals_2 %>% count(Landgrabbed)
+```
+
+```{r , include = FALSE}
+# Clean column Landgrabber.
+land_deals_2 %>% count(Landgrabber)
+# this column does not appear to need fixing.  This has over 300 different entries and any attempt to change lower, upper, title, etc. would be counterproductive.  
+```
+
+```{r , include = FALSE}
+# Column Base clean-up
+land_deals_2 %>% count(Base)
+# This is to clean the column "Base".  This is the country of the Langrabber.  It goes from 64 countries to 59, by fixing some spelling errors and abbreviation doubles.
+land_deals_3 <- land_deals_2 %>%
+  mutate(
+    Base = case_when(
+      str_detect(Base, "--") ~ "NA",
+      str_detect(Base, "Aus") ~ "Australia",
+      str_detect(Base, "Fran") ~ "France",
+      str_detect(Base, "Gem") ~ "Germany",
+      str_detect(Base, "United King") ~ "UK",
+      str_detect(Base, "US") ~ "United States",
+      str_detect(Base, "UNITED STATES") ~ "United States",
+      TRUE ~ Base))
+land_deals_3 %>% count(Base)
+```
+
+```{r , include = FALSE}
+# Column "Sector" clean-up.
+land_deals_3 %>% count(`Sector`)
+# This shows 34 different classes within this variable.  Some may be harder to clean up than others.  There are a number of different entries which are some variation of agribusiness which can be consolidated.  There are many entries which have multiple sectors listed and I will try to organize them as well.  First, I will get rid of excess white space in the entries with str_squish and change all of the entries to lower case. Next, I changed the entries "na" into Null entries "NA".  Then, I will combine as many entries as I can into a more manageable number of classes.  I parsed it down to 24 classes.  The challenge here is the multiple sector entries.  I could split into multiple variables since nothing has more than 3 different types of use, all are separated by commas, and I simplified them as much as I could already.  However, I don't think it will accomplish anything. It does add three new variables and remove Sector itself. 
+land_deals_4 <- land_deals_3 %>%
+  mutate(
+    Sector = str_squish(tolower(Sector)))%>%
+  mutate(
+    Sector = ifelse(Sector == "na", NA, Sector))%>%
+  mutate(
+    Sector = case_when(
+      str_detect(Sector, "agribusiness,,,") ~ "agribusiness, energy",
+      str_detect(Sector, "real estate, finance") ~ "finance, real estate",
+      str_detect(Sector, ",") ~ `Sector`, #this keeps multiple sectors still listed
+      str_detect(Sector, "agri") ~ "agribusiness",
+      str_detect(Sector, "ab") ~ "agribusiness",
+      str_detect(Sector, "fin") ~ "finance",
+      str_detect(Sector, "real") ~ "real estate",
+      str_detect(Sector, "ener") ~ "energy",
+      str_detect(Sector, "min") ~ "industrial",
+      TRUE ~ Sector))
+land_deals_4 %>% count(Sector)
+
+# This is what I would do to split the sector variable by the commas.
+
+land_deals_split <- land_deals_4 %>%
+  separate(Sector, sep = ",",
+           into = c("Sector 1", "Sector 2", "Sector 3"))
+land_deals_split %>% count(`Sector 1`, `Sector 2`, `Sector 3`)
+# The warning returned here it to indicate that 402 rows didn't have three different entries separated by a "," so NA had to be entered for them. Another reason why I wouldn't recommend this for Sector variable, and moving forward I did not include.   
+```
+
+```{r , include = FALSE}
+# Clean Column, Hectares
+land_deals_4 %>% count(Hectares)
+# There is one odd hectare entry, a "2".  Reading the summary for that entry it seems the company has a 50 yr lease for 25,000 Hectares of land in Angola, which corresponds to that row in the df.  The largest number in this column is 3,200,000, which is accurate according to its summary column entry, and it is more than double the next largest.  It may need to be removed to help with visualizations.  
+land_deals_5 <- land_deals_4 %>%
+  transform(
+    land_deals_4[land_deals_4$serial.id==285, "Hectares"] <- 25000)
+land_deals_5 %>% count(Hectares)
+```
+
+```{r , include = FALSE}
+# Clean column, Production
+land_deals_5 %>% count(Production)
+# This column would be tough to clean up.  I could do something similar to what I did to Sector, only there are even more categories.  It wouldn't do much for my analysis, so I will leave it as is.
+```
+
+```{r, include = FALSE}
+# "Projected investment" column clean-up.
+land_deals_5 %>% count(`Projected investment`)
+# Running this count I see 301 "NA" entries out of 416 observations.  There are also a number of other problems like: 91 different categories, the symbols used and their order, some entries use millions while others use billions, and some entries detail lease arrangements by hectares per yr.  It doesn't seem worth it to try to fix this variable since nearly three quarters of it entries are empty and there are many other issues involved with the other 25%.
+```
+
+```{r , include = FALSE}
+# Clean column, Year
+land_deals_5 %>% count(Year)
+# This is to change anomalous "Year" entries to NA.  Anything with a date before 1999 and after 2017, which are the dates this data was supposed to be describing, were likely errant entries.  Now those entries read as NA. There were six entries changed in this way.  I could have changed these specifically to other values within that range, but I would have been making several assumptions like that 17 meant 2017 or 0 meant 2000. 
+land_deals_6 <- land_deals_5 %>%
+  mutate(Year = ifelse(Year < 1998, NA, Year))%>%
+  mutate(Year = ifelse(Year > 2018, NA, Year))
+
+# After I changed those erroneous entries in the year column, I noticed "Year" was still listed as a character(chr) class.  So this function will change it to a numeric vector and save it as a unique df.  This will allow it to be used easier, in multiple visualizations.
+land_deals_7<-mutate(.data = land_deals_6, Year = as.numeric(Year))
+```
+
+```{r , include = FALSE}
+# "Status of deal" column clean-up.
+land_deals_7 %>% count(`Status of deal`)
+# When I run this for the Variable "Status of Deals I see a number of entries that are erroneous.  There are thirteen different classes, but they can be fixed and narrowed down some.  Some examples are: "Complete" instead of "Done", Misspelled Done as Don, some with additional information that should be located elsewhere in the dataset.  I could just run the code to change all of those erroneous entries to NA, but many are identifiable as to which of the main groupings they should be in.  Some like MoU signed, will be changed to In process.  This cleans it up to only have four categories.
+land_deals_8 <- land_deals_7 %>% 
+  mutate(
+    `Status of deal` = case_when(
+      str_detect(`Status of deal`, "Don") ~ "Done",
+      str_detect(`Status of deal`, "Complete") ~ "Done",
+      str_detect(`Status of deal`, "Inprocess") ~ "In process",
+      str_detect(`Status of deal`, "Proposed") ~ "In process",
+      str_detect(`Status of deal`, "MoU") ~ "In process",
+      str_detect(`Status of deal`, "Sus") ~ "Suspended",
+      str_detect(`Status of deal`, "unclear") ~ "Unclear",
+      TRUE ~ `Status of deal`)) 
+land_deals_8 %>% count(`Status of deal`)
+```
+
+
+##Visualization 1
+
+
+```{r , echo = FALSE}
+# Visualization 1
+# This is a scatterplot showing the number of times countries have been the base country of the group purchasing or leasing the land, with the 3.2 million hectares entry removed.
+land_deals_9 <- filter(land_deals_8, Hectares<="2000000")
+basecountry_plot<-ggplot(land_deals_9, aes(x = Base, y = Hectares))+ 
+  geom_point(aes(color = `Status of deal`))+ 
+  labs(x = "Grabbing Country of Origin", 
+       y = "Land area(hectares)")+
+  coord_flip()
+basecountry_plot
+```
+
+
+##Visualization 2
+
+
+```{r , echo = FALSE}
+# Visualization 2 
+# This is a bar chart showing the count for each sector of business the land is being used for.
+sector_bar<-ggplot(data = land_deals_8) +
+  geom_bar(mapping = aes(x = `Sector`))+
+  coord_flip()
+sector_bar
+```
+
+
+##Visualization 3
+
+
+```{r , echo = FALSE}
+# Visualization 3
+# This is a scatterplot with year on the x-axis and Hectares on the y-axis, with the 3.2 million hectares entry removed.
+Year_Hectare_plot<-ggplot(data = land_deals_9)+ 
+  geom_jitter(mapping = aes(x = Year, y =Hectares))
+Year_Hectare_plot
+```
+
+
+
+
+
+
+
+
+
+
