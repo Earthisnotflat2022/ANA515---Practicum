@@ -10,3 +10,8 @@ Instructions for all projects:
 **You should include visuals (histogram, boxplot, graphs, …) for at least 2 variables. (10 points) 
 
 **Your code must include comments to describe what is being done. When dealing with missing data, outliers and errors, make sure you justify why you handled them the way that you did. You can write this in your #comments in the code. (15 points) 
+
+**Include a descriptive ReadMe file in your repository. (5 points) 
+ 
+**In the comment box with your submission, upload a screenshot of your GitHub contribution activity: (5 points) 
+
